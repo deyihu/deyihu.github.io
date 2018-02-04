@@ -3,6 +3,20 @@ var layer;
 
 var data = [];
 var map;
+var nameArr=[
+    'HZYH2015-1.json',
+    'HZYH2015-2.json',
+    'HZYH2015-3.json',
+    'HZYH2015-4.json',
+    'HZYH2016-1.json',
+    'HZYH2016-2.json',
+    'HZYH2016-3.json',
+    'HZYH2016-4.json'
+    // ,'HZYH2017-1.json',
+    // 'HZYH2017-2.json',
+    // 'HZYH2017-3.json',
+    // 'HZYH2017-4.json'
+];
 function init() {
       //初始化gaeainfo地图
       map = new maptalks.Map("map-container",{
@@ -31,20 +45,7 @@ function init() {
     layer=new maptalks.WebGlHeatLayer('flasjlasf',[],options)
     map.addLayer(layer)
 
-    var nameArr=[
-        'HZYH2015-1.json',
-        'HZYH2015-2.json',
-        'HZYH2015-3.json',
-        'HZYH2015-4.json',
-        'HZYH2016-1.json',
-        'HZYH2016-2.json',
-        'HZYH2016-3.json',
-        'HZYH2016-4.json'
-        // ,'HZYH2017-1.json',
-        // 'HZYH2017-2.json',
-        // 'HZYH2017-3.json',
-        // 'HZYH2017-4.json'
-];
+  
     setTimeout(function(e){
        for(var x in nameArr){
            request1(nameArr[x])
@@ -56,6 +57,7 @@ function init() {
 }
 
 var count=0;
+var num=1;
 
 function request1(name) {
     $.get('data/'+name, function (rs) {
@@ -81,6 +83,11 @@ function request1(name) {
         }
         console.log('count:',count)
          layer.addData(data1)
+         num++;
+         console.log(num)
+         if(num==nameArr.length){
+             $('#loadingdiv').hide();
+         }
     });
 
 

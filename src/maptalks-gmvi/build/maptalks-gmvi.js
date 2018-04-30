@@ -70,7 +70,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /******/ 	__webpack_require__.p = "";
 /******/
 /******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(__webpack_require__.s = 10);
+/******/ 	return __webpack_require__(__webpack_require__.s = 11);
 /******/ })
 /************************************************************************/
 /******/ ([
@@ -861,6 +861,184 @@ exports.default = Pulse;
 /* 8 */
 /***/ (function(module, exports, __webpack_require__) {
 
+var SphericalMercator = (function(){
+
+// Closures including constants and other precalculated values.
+var cache = {},
+    EPSLN = 1.0e-10,
+    D2R = Math.PI / 180,
+    R2D = 180 / Math.PI,
+    // 900913 properties.
+    A = 6378137.0,
+    MAXEXTENT = 20037508.342789244;
+
+
+// SphericalMercator constructor: precaches calculations
+// for fast tile lookups.
+function SphericalMercator(options) {
+    options = options || {};
+    this.size = options.size || 256;
+    if (!cache[this.size]) {
+        var size = this.size;
+        var c = cache[this.size] = {};
+        c.Bc = [];
+        c.Cc = [];
+        c.zc = [];
+        c.Ac = [];
+        for (var d = 0; d < 30; d++) {
+            c.Bc.push(size / 360);
+            c.Cc.push(size / (2 * Math.PI));
+            c.zc.push(size / 2);
+            c.Ac.push(size);
+            size *= 2;
+        }
+    }
+    this.Bc = cache[this.size].Bc;
+    this.Cc = cache[this.size].Cc;
+    this.zc = cache[this.size].zc;
+    this.Ac = cache[this.size].Ac;
+};
+
+// Convert lon lat to screen pixel value
+//
+// - `ll` {Array} `[lon, lat]` array of geographic coordinates.
+// - `zoom` {Number} zoom level.
+SphericalMercator.prototype.px = function(ll, zoom) {
+    var d = this.zc[zoom];
+    var f = Math.min(Math.max(Math.sin(D2R * ll[1]), -0.9999), 0.9999);
+    var x = Math.round(d + ll[0] * this.Bc[zoom]);
+    var y = Math.round(d + 0.5 * Math.log((1 + f) / (1 - f)) * (-this.Cc[zoom]));
+    (x > this.Ac[zoom]) && (x = this.Ac[zoom]);
+    (y > this.Ac[zoom]) && (y = this.Ac[zoom]);
+    //(x < 0) && (x = 0);
+    //(y < 0) && (y = 0);
+    return [x, y];
+};
+
+// Convert screen pixel value to lon lat
+//
+// - `px` {Array} `[x, y]` array of geographic coordinates.
+// - `zoom` {Number} zoom level.
+SphericalMercator.prototype.ll = function(px, zoom) {
+    var g = (px[1] - this.zc[zoom]) / (-this.Cc[zoom]);
+    var lon = (px[0] - this.zc[zoom]) / this.Bc[zoom];
+    var lat = R2D * (2 * Math.atan(Math.exp(g)) - 0.5 * Math.PI);
+    return [lon, lat];
+};
+
+// Convert tile xyz value to bbox of the form `[w, s, e, n]`
+//
+// - `x` {Number} x (longitude) number.
+// - `y` {Number} y (latitude) number.
+// - `zoom` {Number} zoom.
+// - `tms_style` {Boolean} whether to compute using tms-style.
+// - `srs` {String} projection for resulting bbox (WGS84|900913).
+// - `return` {Array} bbox array of values in form `[w, s, e, n]`.
+SphericalMercator.prototype.bbox = function(x, y, zoom, tms_style, srs) {
+    // Convert xyz into bbox with srs WGS84
+    if (tms_style) {
+        y = (Math.pow(2, zoom) - 1) - y;
+    }
+    // Use +y to make sure it's a number to avoid inadvertent concatenation.
+    var ll = [x * this.size, (+y + 1) * this.size]; // lower left
+    // Use +x to make sure it's a number to avoid inadvertent concatenation.
+    var ur = [(+x + 1) * this.size, y * this.size]; // upper right
+    var bbox = this.ll(ll, zoom).concat(this.ll(ur, zoom));
+
+    // If web mercator requested reproject to 900913.
+    if (srs === '900913') {
+        return this.convert(bbox, '900913');
+    } else {
+        return bbox;
+    }
+};
+
+// Convert bbox to xyx bounds
+//
+// - `bbox` {Number} bbox in the form `[w, s, e, n]`.
+// - `zoom` {Number} zoom.
+// - `tms_style` {Boolean} whether to compute using tms-style.
+// - `srs` {String} projection of input bbox (WGS84|900913).
+// - `@return` {Object} XYZ bounds containing minX, maxX, minY, maxY properties.
+SphericalMercator.prototype.xyz = function(bbox, zoom, tms_style, srs) {
+    // If web mercator provided reproject to WGS84.
+    if (srs === '900913') {
+        bbox = this.convert(bbox, 'WGS84');
+    }
+
+    var ll = [bbox[0], bbox[1]]; // lower left
+    var ur = [bbox[2], bbox[3]]; // upper right
+    var px_ll = this.px(ll, zoom);
+    var px_ur = this.px(ur, zoom);
+    // Y = 0 for XYZ is the top hence minY uses px_ur[1].
+    var x = [ Math.floor(px_ll[0] / this.size), Math.floor((px_ur[0] - 1) / this.size) ];
+    var y = [ Math.floor(px_ur[1] / this.size), Math.floor((px_ll[1] - 1) / this.size) ];
+    var bounds = {
+        minX: Math.min.apply(Math, x) < 0 ? 0 : Math.min.apply(Math, x),
+        minY: Math.min.apply(Math, y) < 0 ? 0 : Math.min.apply(Math, y),
+        maxX: Math.max.apply(Math, x),
+        maxY: Math.max.apply(Math, y)
+    };
+    if (tms_style) {
+        var tms = {
+            minY: (Math.pow(2, zoom) - 1) - bounds.maxY,
+            maxY: (Math.pow(2, zoom) - 1) - bounds.minY
+        };
+        bounds.minY = tms.minY;
+        bounds.maxY = tms.maxY;
+    }
+    return bounds;
+};
+
+// Convert projection of given bbox.
+//
+// - `bbox` {Number} bbox in the form `[w, s, e, n]`.
+// - `to` {String} projection of output bbox (WGS84|900913). Input bbox
+//   assumed to be the "other" projection.
+// - `@return` {Object} bbox with reprojected coordinates.
+SphericalMercator.prototype.convert = function(bbox, to) {
+    if (to === '900913') {
+        return this.forward(bbox.slice(0, 2)).concat(this.forward(bbox.slice(2,4)));
+    } else {
+        return this.inverse(bbox.slice(0, 2)).concat(this.inverse(bbox.slice(2,4)));
+    }
+};
+
+// Convert lon/lat values to 900913 x/y.
+SphericalMercator.prototype.forward = function(ll) {
+    var xy = [
+        A * ll[0] * D2R,
+        A * Math.log(Math.tan((Math.PI*0.25) + (0.5 * ll[1] * D2R)))
+    ];
+    // if xy value is beyond maxextent (e.g. poles), return maxextent.
+    (xy[0] > MAXEXTENT) && (xy[0] = MAXEXTENT);
+    (xy[0] < -MAXEXTENT) && (xy[0] = -MAXEXTENT);
+    (xy[1] > MAXEXTENT) && (xy[1] = MAXEXTENT);
+    (xy[1] < -MAXEXTENT) && (xy[1] = -MAXEXTENT);
+    return xy;
+};
+
+// Convert 900913 x/y values to lon/lat.
+SphericalMercator.prototype.inverse = function(xy) {
+    return [
+        (xy[0] * R2D / A),
+        ((Math.PI*0.5) - 2.0 * Math.atan(Math.exp(-xy[1] / A))) * R2D
+    ];
+};
+
+return SphericalMercator;
+
+})();
+
+if (true) {
+    module.exports = exports = SphericalMercator;
+}
+
+
+/***/ }),
+/* 9 */
+/***/ (function(module, exports, __webpack_require__) {
+
 "use strict";
 
 
@@ -883,7 +1061,7 @@ var GLCanvas = function GLCanvas(el, options) {
 exports.default = GLCanvas;
 
 /***/ }),
-/* 9 */
+/* 10 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1029,17 +1207,15 @@ var Spark = function () {
 exports.default = Spark;
 
 /***/ }),
-/* 10 */
+/* 11 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-__webpack_require__(11);
+__webpack_require__(12);
 
 __webpack_require__(4);
-
-__webpack_require__(12);
 
 __webpack_require__(13);
 
@@ -1053,14 +1229,19 @@ __webpack_require__(17);
 
 __webpack_require__(18);
 
+__webpack_require__(19);
+
 __webpack_require__(20);
 
-var _version = __webpack_require__(45);
+__webpack_require__(22);
+
+var _version = __webpack_require__(46);
 
 var _version2 = _interopRequireDefault(_version);
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
+//命名空间
 GL.GMVI.OPTION = {
     size: 5,
     id: 'UUID', // 图层主键(若不设置为GL.H.uuid())
@@ -1105,9 +1286,6 @@ GL.GMVI.OPTION = {
     //绘制类型 ,只有CanvasLayer支持该配置，其他两个图层(WebGlLayer,WebGlHeatLayer)不支持
 };
 
-//命名空间
-
-
 var name = _version2.default.id;
 var version = _version2.default.version;
 var date = _version2.default.date;
@@ -1125,7 +1303,7 @@ if (window.maptalks) {
 }
 
 /***/ }),
-/* 11 */
+/* 12 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1175,8 +1353,30 @@ GL.GMVI.Scatter = 'scatter';
 GL.GMVI.MigrateLines = 'migrateLines';
 GL.GMVI.Arrow = 'arrow';
 
+var CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'.split('');
+GL.GMVI.uuid = function () {
+    var prefix = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 'ID';
+
+    var uuid = new Array(36),
+        rnd = 0,
+        r = void 0;
+    for (var i = 0; i < 36; i++) {
+        if (i === 8 || i === 13 || i === 18 || i === 23) {
+            uuid[i] = '-';
+        } else if (i === 14) {
+            uuid[i] = '4';
+        } else {
+            if (rnd <= 0x02) rnd = 0x2000000 + Math.random() * 0x1000000 | 0;
+            r = rnd & 0xf;
+            rnd = rnd >> 4;
+            uuid[i] = CHARS[i === 19 ? r & 0x3 | 0x8 : r];
+        }
+    }
+    return prefix + '-' + uuid.join('');
+};
+
 /***/ }),
-/* 12 */
+/* 13 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1254,7 +1454,7 @@ var GLCsv = function () {
 exports.default = GL.GMVI.Csv = GLCsv;
 
 /***/ }),
-/* 13 */
+/* 14 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1308,7 +1508,7 @@ var GLGeoJson = function () {
 exports.default = GL.GMVI.GeoJson = new GLGeoJson();
 
 /***/ }),
-/* 14 */
+/* 15 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1505,7 +1705,389 @@ GL.GMVI.ClusterUtil.Util = {
 };
 
 /***/ }),
-/* 15 */
+/* 16 */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+// import { randomBytes } from 'crypto';
+
+var GridSize = 100;
+
+var MINLNG = -179;
+var MAXLNG = 179;
+var MINLAT = -89;
+var MAXLAT = 89;
+
+var MECATORMINLNG = -19926188.851995967;
+var MECATORMAXLNG = 19926188.851995967;
+var MECATORMINLAT = -20037508.342789244;
+var MECATORMAXLAT = 20037508.342789244;
+
+var EPSG3857 = "EPSG:3857";
+
+var SphericalMercator = __webpack_require__(8);
+var merc = new SphericalMercator({
+    size: 256
+});
+
+GL.GMVI.SuperCluster = function (data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, heigh, crsCode) {
+    if (EPSG3857 === crsCode) return mecatorCluster(data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, heigh);
+    return cluster(data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, heigh);
+};
+
+function cluster(data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, heigh) {
+    var xAverage = width / (maxx - minx); //单位经度对应的像素个数
+    var yAverage = heigh / (maxy - miny); //单位纬度对应的像素个数
+    var lngAverage = (maxx - minx) / width;
+    var latAverage = (maxy - miny) / heigh;
+    var result = {};
+    var rangleData = [];
+    for (var i = 0; i < data.length; i++) {
+        var element = data[i];
+        var geometry = element.geometry;
+        if (geometry.type == GL.GMVI.Geometry.Point) {
+            var coordinates = geometry.coordinates;
+            var lng = parseFloat(coordinates[0]),
+                lat = parseFloat(coordinates[1]);
+            if (minx <= lng && lng <= maxx && miny <= lat && lat <= maxy) rangleData.push(element);
+        }
+    }
+
+    if (zoom > maxClusterLv) {
+        var clusterGrid = [];
+        var unClusterGrid = [];
+        rangleData.forEach(function (element) {
+            var geometry = element.geometry;
+            if (geometry.type == GL.GMVI.Geometry.Point) {
+                var coordinates = geometry.coordinates;
+                var lng = parseFloat(coordinates[0]),
+                    lat = parseFloat(coordinates[1]);
+                var grid = { count: 1, center: [lng, lat], item: element };
+                var x = (lng - minx) * xAverage;
+                var y = heigh - (lat - miny) * yAverage;
+                grid.xy = [x, y];
+                unClusterGrid.push(grid);
+            }
+        });
+
+        result["clusters"] = clusterGrid;
+        result["unClusters"] = unClusterGrid;
+        return result;
+    }
+    var rowsList = [],
+        colList = [],
+        gridList = [],
+        grids = {};
+    var c = 0;
+    var r = 0;
+    while (true) {
+        if ((r + 1) * GridSize * latAverage + MINLAT >= miny) {
+            rowsList.push(r);
+        }
+        if ((r + 1) * GridSize * latAverage + MINLAT >= maxy) {
+            break;
+        }
+        r++;
+    }
+    while (true) {
+        if ((c + 1) * GridSize * lngAverage + MINLNG >= minx) {
+            colList.push(c);
+        }
+        if ((c + 1) * GridSize * lngAverage + MINLNG >= maxx) {
+            break;
+        }
+        c++;
+    }
+    var rowColList = [];
+    for (var i = 0; i < rowsList.length; i++) {
+        var row = rowsList[i];
+        var rowCol = [];
+        for (var j = 0; j < colList.length; j++) {
+            var col = colList[j];
+            var grid = { gridIndex: row + '-' + col };
+            if (!grids[row]) {
+                grids[row] = {};
+            }
+            grids[row][col] = grid;
+            rowCol.push([row, col]);
+        }
+        rowColList.push(rowCol);
+    }
+    for (var i = 0; i < rangleData.length; i++) {
+        var element = rangleData[i];
+        var geometry = element.geometry;
+        if (geometry.type !== GL.GMVI.Geometry.Point) continue;
+        var coordinates = geometry.coordinates;
+        var lng = parseFloat(coordinates[0]),
+            lat = parseFloat(coordinates[1]);
+        var row = parseInt((lat - MINLAT) / (latAverage * GridSize));
+        var col = parseInt((lng - MINLNG) / (lngAverage * GridSize));
+        if (!grids[row]) console.error(row, 'is error');
+        if (!grids[row][col]) console.error(col, 'is error');
+        var grid = grids[row][col];
+        if (!grid.center) {
+            grid.center = [lng, lat]; //(new double[]{lng,lat});
+            grid.count = 1;
+            var x = (lng - minx) * xAverage;
+            var y = heigh - (lat - miny) * yAverage;
+            grid.xy = [x, y];
+            grid.item = element;
+            grids[row][col] = grid;
+        } else {
+            grids[row][col].count = grids[row][col].count + 1;
+        }
+    }
+    rowColList.forEach(function (rowCol) {
+        rowCol.forEach(function (rc) {
+            var row = rc[0],
+                col = rc[1];
+            gridList.push(grids[row][col]);
+        });
+    });
+    var IdMap = {},
+        NearGridList = [];
+    while (true) {
+        getNearGridList(gridList, IdMap, NearGridList, minx, miny, xAverage, yAverage, heigh, false);
+        if (NearGridList.length == 0) break;
+        gridList = gridList.concat(NearGridList);
+        NearGridList = [];
+    }
+    var clusterGrid = [],
+        unClusterGrid = [];
+    for (var i = 0; i < gridList.length; i++) {
+        var grid = gridList[i];
+        var id = grid.gridIndex;
+        if (IdMap[id]) continue;
+        var count = grid.count;
+        if (count == 1) {
+            unClusterGrid.push(grid);
+        }
+        if (count > 1) {
+            clusterGrid.push(grid);
+        }
+    }
+    result["clusters"] = clusterGrid;
+    result["unClusters"] = unClusterGrid;
+    return result;
+}
+
+function getNearGridList(gridList, IdMap, NearGridList, minx, miny, xAverage, yAverage, heigh, isMecator) {
+    for (var row = 0; row < gridList.length; row++) {
+        var rowGrid = gridList[row];
+        var id = rowGrid['gridIndex'];
+        if (IdMap[id] != undefined) continue;
+        // if(rowGrid.count<2) continue;
+        var lnglat = rowGrid.center;
+        if (lnglat == null) continue;
+        var lng = lnglat[0],
+            lat = lnglat[1];
+        var xy = rowGrid.xy;
+        var x = xy[0],
+            y = xy[1];
+        for (var col = 0; col < gridList.length; col++) {
+            var colGrid = gridList[col];
+            // if(colGrid.count<2) continue;
+            var id1 = colGrid.gridIndex;
+            if (IdMap[id1] != undefined || id === id1 || IdMap[id] != undefined) continue;
+            var lnglat1 = colGrid.center;
+            if (lnglat1 == null) continue;
+            var lng1 = lnglat1[0],
+                lat1 = lnglat1[1];
+            var xy1 = colGrid.xy;
+            var x1 = xy1[0],
+                y1 = xy1[1];
+            if (Math.sqrt(Math.pow(y1 - y, 2) + Math.pow(x1 - x, 2)) <= 50) {
+                // console.log(id,id1,rowGrid.count,colGrid.count);
+                var grid = {};
+                grid.center = [(lng + lng1) / 2, (lat + lat1) / 2];
+                grid.count = rowGrid.count + colGrid.count;
+                // console.log(grid.count);
+                grid.gridIndex = GL.GMVI.uuid();
+                var ax, ay;
+                if (isMecator) {
+                    var mlnglat = merc.forward([lng, lat]);
+                    var mlnglat1 = merc.forward([lng1, lat1]);
+                    ax = ((mlnglat[0] + mlnglat1[0]) / 2 - minx) * xAverage;
+                    ay = heigh - ((mlnglat[1] + mlnglat1[1]) / 2 - miny) * yAverage;
+                } else {
+                    ax = ((lng + lng1) / 2 - minx) * xAverage;
+                    ay = heigh - ((lat + lat1) / 2 - miny) * yAverage;
+                }
+                grid.xy = [ax, ay];
+                NearGridList.push(grid);
+                IdMap[id] = id;
+                IdMap[id1] = id1;
+            }
+        }
+    }
+}
+
+function mecatorCluster(data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, heigh) {
+    // console.log(minx,miny,maxx,maxy);
+    var minxy = merc.forward([minx, miny]);
+    var maxxy = merc.forward([maxx, maxy]);
+    minx = minxy[0];miny = minxy[1];maxx = maxxy[0];maxy = maxxy[1];
+    // width=(maxx-minx)/width*(MECATORMAXLNG-MECATORMINLNG);
+    // heigh=(maxy-miny)/heigh*(MECATORMAXLAT-MECATORMINLAT);
+    // minx=-180,maxx=180,miny=-90,maxy=90;
+    // minxy=  merc.forward([minx,miny]);
+    // maxxy= merc.forward([maxx,maxy]);
+    // minx=minxy[0];miny=minxy[1];maxx=maxxy[0];maxy=maxxy[1];
+    var xAverage = width / (maxx - minx);
+    var yAverage = heigh / (maxy - miny);
+    var lngAverage = (maxx - minx) / width;
+    var latAverage = (maxy - miny) / heigh;
+
+    var result = {};
+    var rangleData = [];
+
+    data.forEach(function (element) {
+        var geometry = element.geometry;
+        if (geometry.type == GL.GMVI.Geometry.Point) {
+            var mercatormeters = geometry.mercatormeters;
+            var lng = parseFloat(mercatormeters[0]),
+                lat = parseFloat(mercatormeters[1]);
+            if (minx <= lng && lng <= maxx && miny <= lat && lat <= maxy) rangleData.push(element);
+        }
+    });
+    if (zoom > maxClusterLv) {
+        var clusterGrid = [];
+        var unClusterGrid = [];
+        rangleData.forEach(function (element) {
+            var geometry = element.geometry;
+            if (geometry.type == GL.GMVI.Geometry.Point) {
+                var coordinates = geometry.coordinates;
+                var mercatormeters = geometry.mercatormeters;
+                var lng = parseFloat(coordinates[0]),
+                    lat = parseFloat(coordinates[1]);
+                var mlng = mercatormeters[0],
+                    mlat = mercatormeters[1];
+                var grid = { count: 1, center: [lng, lat], item: element };
+                var x = (mlng - minx) * xAverage;
+                var y = heigh - (mlat - miny) * yAverage;
+                grid.xy = [x, y];
+                unClusterGrid.push(grid);
+            }
+        });
+        result["clusters"] = clusterGrid;
+        result["unClusters"] = unClusterGrid;
+        return result;
+    }
+
+    var rowsList = [],
+        colList = [],
+        gridList = [],
+        grids = {};
+    var c = 0;
+    var r = 0;
+    while (true) {
+        if ((r + 1) * GridSize * latAverage + MECATORMINLAT >= miny) {
+            rowsList.push(r);
+        }
+        if ((r + 1) * GridSize * latAverage + MECATORMINLAT >= maxy) {
+            break;
+        }
+        r++;
+    }
+    while (true) {
+        if ((c + 1) * GridSize * lngAverage + MECATORMINLNG >= minx) {
+            colList.push(c);
+        }
+        if ((c + 1) * GridSize * lngAverage + MECATORMINLNG >= maxx) {
+            break;
+        }
+        c++;
+    }
+    var rowColList = [];
+    for (var i = 0; i < rowsList.length; i++) {
+        var row = rowsList[i];
+        var rowCol = [];
+        for (var j = 0; j < colList.length; j++) {
+            var col = colList[j];
+            var grid = { gridIndex: row + '-' + col };
+            if (!grids[row]) {
+                grids[row] = {};
+            }
+            grids[row][col] = grid;
+            rowCol.push([row, col]);
+        }
+        rowColList.push(rowCol);
+    }
+    for (var i = 0; i < rangleData.length; i++) {
+        var element = rangleData[i];
+        var geometry = element.geometry;
+        if (geometry.type !== GL.GMVI.Geometry.Point) continue;
+        var mercatormeters = geometry.mercatormeters;
+        var coordinates = geometry.coordinates;
+        var lng = parseFloat(coordinates[0]),
+            lat = parseFloat(coordinates[1]);
+        var mlng = mercatormeters[0],
+            mlat = mercatormeters[1];
+        var row = parseInt((mlat - MECATORMINLAT) / (latAverage * GridSize));
+        var col = parseInt((mlng - MECATORMINLNG) / (lngAverage * GridSize));
+        if (!grids[row]) console.error(row, 'is error');
+        if (!grids[row][col]) console.error(col, 'is error');
+        var grid = grids[row][col];
+        if (!grid.center) {
+            grid.center = [lng, lat]; //(new double[]{lng,lat});
+            grid.count = 1;
+            var x = (mlng - minx) * xAverage;
+            var y = heigh - (mlat - miny) * yAverage;
+            grid.xy = [x, y];
+            grid.item = element;
+            grids[row][col] = grid;
+        } else {
+            grids[row][col].count = grids[row][col].count + 1;
+        }
+    }
+
+    rowColList.forEach(function (rowCol) {
+        rowCol.forEach(function (rc) {
+            var row = rc[0],
+                col = rc[1];
+            var grid = grids[row][col];
+            if (grid.center != undefined) gridList.push(grids[row][col]);
+        });
+    });
+
+    var IdMap = {},
+        NearGridList = [];
+    while (true) {
+        getNearGridList(gridList, IdMap, NearGridList, minx, miny, xAverage, yAverage, heigh, true);
+        if (NearGridList.length == 0) break;
+        gridList = gridList.concat(NearGridList);
+        NearGridList = [];
+    }
+    // var total=0;
+    // gridList.forEach(element=>{
+    //     var c=element.count||0;
+    //     total+=c;
+
+    // })
+    // console.log(total);
+    var clusterGrid = [],
+        unClusterGrid = [];
+    for (var i = 0; i < gridList.length; i++) {
+        var grid = gridList[i];
+        var id = grid.gridIndex;
+        if (IdMap[id]) continue;
+        var count = grid.count;
+        if (count == 1) {
+            unClusterGrid.push(grid);
+        }
+        if (count > 1) {
+            clusterGrid.push(grid);
+        }
+    }
+    result["clusters"] = clusterGrid;
+    result["unClusters"] = unClusterGrid;
+    return result;
+}
+
+/***/ }),
+/* 17 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1568,7 +2150,7 @@ var GLCityCenterUtil = function () {
 exports.default = GL.GMVI.CityCenterUtil = new GLCityCenterUtil();
 
 /***/ }),
-/* 16 */
+/* 18 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -1987,7 +2569,7 @@ var ForceEdgeBundling = function ForceEdgeBundling() {
 exports.default = GL.GMVI.ForceEdgeBundlingUtil = ForceEdgeBundling;
 
 /***/ }),
-/* 17 */
+/* 19 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2105,13 +2687,13 @@ var curve = {
 exports.default = GL.GMVI.CurveUtil = curve;
 
 /***/ }),
-/* 18 */
+/* 20 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
 
 
-var _os = __webpack_require__(19);
+var _os = __webpack_require__(21);
 
 GL.GMVI.Extend = function (dest, args) {
    for (var key in args) {
@@ -2121,7 +2703,7 @@ GL.GMVI.Extend = function (dest, args) {
 };
 
 /***/ }),
-/* 19 */
+/* 21 */
 /***/ (function(module, exports) {
 
 exports.endianness = function () { return 'LE' };
@@ -2176,7 +2758,7 @@ exports.homedir = function () {
 
 
 /***/ }),
-/* 20 */
+/* 22 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -2190,15 +2772,15 @@ var _GLSimplePath = __webpack_require__(5);
 
 var _GLSimplePath2 = _interopRequireDefault(_GLSimplePath);
 
-var _Animator = __webpack_require__(21);
+var _Animator = __webpack_require__(23);
 
 var _Animator2 = _interopRequireDefault(_Animator);
 
-var _GLCategory = __webpack_require__(22);
+var _GLCategory = __webpack_require__(24);
 
 var _GLCategory2 = _interopRequireDefault(_GLCategory);
 
-var _GLChoropleth = __webpack_require__(23);
+var _GLChoropleth = __webpack_require__(25);
 
 var _GLChoropleth2 = _interopRequireDefault(_GLChoropleth);
 
@@ -2206,71 +2788,71 @@ var _GLIntensity = __webpack_require__(1);
 
 var _GLIntensity2 = _interopRequireDefault(_GLIntensity);
 
-var _GLCanvasArrow = __webpack_require__(24);
+var _GLCanvasArrow = __webpack_require__(26);
 
 var _GLCanvasArrow2 = _interopRequireDefault(_GLCanvasArrow);
 
-var _GLCanvasCluster = __webpack_require__(25);
+var _GLCanvasCluster = __webpack_require__(27);
 
 var _GLCanvasCluster2 = _interopRequireDefault(_GLCanvasCluster);
 
-var _GLCanvasEffect = __webpack_require__(26);
+var _GLCanvasEffect = __webpack_require__(28);
 
 var _GLCanvasEffect2 = _interopRequireDefault(_GLCanvasEffect);
 
-var _GLCanvasGrid = __webpack_require__(27);
+var _GLCanvasGrid = __webpack_require__(29);
 
 var _GLCanvasGrid2 = _interopRequireDefault(_GLCanvasGrid);
 
-var _GLCanvasHeat = __webpack_require__(28);
+var _GLCanvasHeat = __webpack_require__(30);
 
 var _GLCanvasHeat2 = _interopRequireDefault(_GLCanvasHeat);
 
-var _GLCanvasHoneycomb = __webpack_require__(30);
+var _GLCanvasHoneycomb = __webpack_require__(32);
 
 var _GLCanvasHoneycomb2 = _interopRequireDefault(_GLCanvasHoneycomb);
 
-var _GLCanvasIcon = __webpack_require__(31);
+var _GLCanvasIcon = __webpack_require__(33);
 
 var _GLCanvasIcon2 = _interopRequireDefault(_GLCanvasIcon);
 
-var _GLCanvasMigrate = __webpack_require__(32);
+var _GLCanvasMigrate = __webpack_require__(34);
 
 var _GLCanvasMigrate2 = _interopRequireDefault(_GLCanvasMigrate);
 
-var _GLCanvasMigrateLines = __webpack_require__(34);
+var _GLCanvasMigrateLines = __webpack_require__(36);
 
 var _GLCanvasMigrateLines2 = _interopRequireDefault(_GLCanvasMigrateLines);
 
-var _GLCanvasScatter = __webpack_require__(36);
+var _GLCanvasScatter = __webpack_require__(38);
 
 var _GLCanvasScatter2 = _interopRequireDefault(_GLCanvasScatter);
 
-var _GLCanvasSimple = __webpack_require__(37);
+var _GLCanvasSimple = __webpack_require__(39);
 
 var _GLCanvasSimple2 = _interopRequireDefault(_GLCanvasSimple);
 
-var _GLCanvasStar = __webpack_require__(38);
+var _GLCanvasStar = __webpack_require__(40);
 
 var _GLCanvasStar2 = _interopRequireDefault(_GLCanvasStar);
 
-var _GLCanvasTagCloud = __webpack_require__(39);
+var _GLCanvasTagCloud = __webpack_require__(41);
 
 var _GLCanvasTagCloud2 = _interopRequireDefault(_GLCanvasTagCloud);
 
-var _GLCanvasText = __webpack_require__(40);
+var _GLCanvasText = __webpack_require__(42);
 
 var _GLCanvasText2 = _interopRequireDefault(_GLCanvasText);
 
-var _GLCanvasWaterBubble = __webpack_require__(41);
+var _GLCanvasWaterBubble = __webpack_require__(43);
 
 var _GLCanvasWaterBubble2 = _interopRequireDefault(_GLCanvasWaterBubble);
 
-var _GLCanvasRadial = __webpack_require__(42);
+var _GLCanvasRadial = __webpack_require__(44);
 
 var _GLCanvasRadial2 = _interopRequireDefault(_GLCanvasRadial);
 
-var _Circle = __webpack_require__(43);
+var _Circle = __webpack_require__(45);
 
 var _Circle2 = _interopRequireDefault(_Circle);
 
@@ -2284,7 +2866,7 @@ function _inherits(subClass, superClass) { if (typeof superClass !== "function" 
 // import CanvasRadiation from "./../canvas/draw/GLCanvasRadiation"
 
 
-var SphericalMercator = __webpack_require__(44);
+var SphericalMercator = __webpack_require__(8);
 var merc = new SphericalMercator({
     size: 256
 });
@@ -2575,6 +3157,8 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
     }, {
         key: "_drawCanvasLayer",
         value: function _drawCanvasLayer() {
+            var _this2 = this;
+
             var renderer = this.getRenderer();
             var newData = [];
             var currenttime = this.time;
@@ -2651,7 +3235,8 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
                 var map = this.getMap(),
                     size = map.getSize(),
                     zoom = map.getZoom(),
-                    extent = map.getExtent();
+                    extent = map.getExtent(),
+                    center = map.getCenter();
                 var maxClusterLv = this.options.maxClusterLv || map.getMaxZoom();
                 var minx = extent.xmin;
                 var miny = extent.ymin;
@@ -2659,31 +3244,65 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
                 var maxy = extent.ymax;
                 var width = size.width;
                 var height = size.height;
-                //聚合工具对数据进行聚合
-                var clusterResult = GL.GMVI.ClusterUtil.cluster(_data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, height);
+                var crsCode = map.getSpatialReference()._projection.code;
+                // console.log(extent)
+                if (maxx < minx || maxy < miny) {
+                    minx = -180, maxx = 180, miny = -90, maxy = 90;
+                }
+                // minx=-180,maxx=180,miny=-90,maxy=90;
+                var clusterResult = GL.GMVI.SuperCluster(this.data, zoom, maxClusterLv, minx, miny, maxx, maxy, width, height, crsCode);
                 if (clusterResult) {
-                    var cluster = clusterResult.cluster;
-                    var discrete = clusterResult.discrete;
-                    if (cluster) {
-                        for (var x in cluster) {
-                            var o = cluster[x];
-                            var center = o.center;
-                            var xy = this._lnglatToPixel(center);
-                            clusterResult.cluster[x].xy = xy;
-                            this.status = 'cluster';
-                        }
-                    }
-                    if (discrete) {
-                        for (var i = 0; i < discrete.length; i++) {
-                            var o = discrete[i];
-                            var center = o.slice(0, 2);
-                            var xy = this._lnglatToPixel(center);
-                            clusterResult.discrete[i] = clusterResult.discrete[i].concat(xy);
-                            this.status = 'discrete';
-                        }
-                    }
+                    var unClustersData = [];
+                    var unCluster = [];
+                    (clusterResult.unClusters || []).forEach(function (element) {
+                        var xy = _this2._lnglatToPixel(element.center);
+                        element.xy = xy;
+                        element.item.xy = xy;
+                        unClustersData.push(element.item);
+                        unCluster.push(element);
+                    });
+                    var clusters = clusterResult.clusters || [];
+                    var clusterData = [];
+                    this.unClustersData = unClustersData;
+                    clusters.forEach(function (element) {
+                        // console.log(element.xy);
+                        var xy = _this2._lnglatToPixel(element.center);
+                        element.xy = xy;
+                        // console.log(element.xy);
+                        clusterData.push(element);
+                        // console.log('==========');
+                    });
+                    clusterResult.clusters = clusterData;
+                    clusterResult.unClusters = unCluster;
+                    // console.log(unClustersData);
                     this.canvasType.draw(this.getContext(), clusterResult, this.options);
                 }
+
+                //聚合工具对数据进行聚合
+                // var clusterResult=GL.GMVI.ClusterUtil.cluster(_data,zoom,maxClusterLv,minx,miny,maxx,maxy,width,height)
+                // if(clusterResult) {
+                //     var cluster = clusterResult.cluster;
+                //     var discrete = clusterResult.discrete
+                //     if (cluster) {
+                //         for (var x in cluster) {
+                //             var o = cluster[x];
+                //             var center = o.center;
+                //             var xy = this._lnglatToPixel(center);
+                //             clusterResult.cluster[x].xy = xy;
+                //             this.status = 'cluster'
+                //         }
+                //     }
+                //     if (discrete) {
+                //         for (var i = 0; i < discrete.length; i++) {
+                //             var o = discrete[i];
+                //             var center = o.slice(0, 2);
+                //             var xy = this._lnglatToPixel(center);
+                //             clusterResult.discrete[i] = clusterResult.discrete[i].concat(xy);
+                //             this.status = 'discrete'
+                //         }
+                //     }
+                //     this.canvasType.draw(this.getContext(), clusterResult, this.options);
+                // }
             }
         }
 
@@ -2850,6 +3469,7 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
             canvas.height = this._canvas.height;
             var ctx = canvas.getContext('2d');
             var data = this.data;
+            if (this.options.draw == GL.GMVI.Cluster) data = this.unClustersData;
             for (var i = 0; i < data.length; i++) {
                 if (this.canvasType instanceof _GLCanvasMigrateLines2.default) {
                     var xy = data[i].xy;
@@ -3003,7 +3623,7 @@ GMVICanvasLayer.registerRenderer('canvas', GMVICanvasLayerRenderer);
 GL.GMVI.CanvasLayer = GMVICanvasLayer;
 
 /***/ }),
-/* 21 */
+/* 23 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3226,7 +3846,7 @@ Animator.prototype = {
 exports.default = Animator;
 
 /***/ }),
-/* 22 */
+/* 24 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3276,7 +3896,7 @@ var GLCategory = function () {
 exports.default = GLCategory;
 
 /***/ }),
-/* 23 */
+/* 25 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3328,7 +3948,7 @@ var GLChoropleth = function () {
 exports.default = GLChoropleth;
 
 /***/ }),
-/* 24 */
+/* 26 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3424,7 +4044,7 @@ var GLCanvasArrow = function (_BaseCanvas) {
 exports.default = GLCanvasArrow;
 
 /***/ }),
-/* 25 */
+/* 27 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3470,39 +4090,42 @@ var GLCanvasCluster = function (_BaseCanvas) {
             for (var key in options) {
                 ctx[key] = options[key];
             }
-            var cluster = dataSet.cluster;
-            var discrete = dataSet.discrete;
-            if (cluster) {
-
-                var size = options.size || 25;
-                for (var i in cluster) {
-                    var xy = cluster[i].xy;
-                    var count = cluster[i].count;
-
-                    ctx.fillStyle = this.getColor(count);
+            var clusters = dataSet.clusters;
+            var unClusters = dataSet.unClusters;
+            if (clusters) {
+                var self = this;
+                var size = options.size || 20;
+                clusters.forEach(function (element) {
+                    var xy = element.xy;
+                    var count = element.count;
+                    ctx.fillStyle = self.getOutColor(count);
+                    var innerColor = self.getInnerColor(count);
+                    if (count > 1000) count = (count / 1000).toFixed(1) + 'k';
                     ctx.beginPath();
                     ctx.arc(xy[0], xy[1], size, 0, Math.PI * 2);
                     ctx.fill();
-                    // ctx.lineWidth = 1;
-                    // ctx.strokeStyle = options.strokeStyle||'#fff';
-                    // ctx.stroke();
                     ctx.save();
+                    ctx.fillStyle = innerColor;
+                    ctx.beginPath();
+                    ctx.arc(xy[0], xy[1], size - 5, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.save();
+
                     ctx.font = options.font || 15 + 'px Microsoft YaHei UI';
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
-
                     ctx.fillStyle = options.fillStyle || '#151515';
                     ctx.fillText(count, xy[0], xy[1]);
-                }
+                });
             }
 
-            if (discrete && discrete.length > 0) {
-                var len = discrete.length;
+            if (unClusters && unClusters.length > 0) {
+                var len = unClusters.length;
                 var size = options.size || 10;
                 for (var i = 0; i < len; i++) {
-                    var o = discrete[i];
-                    var xy = o.slice(4, 6);
-                    var item = o[3];
+                    var o = unClusters[i];
+                    var xy = o.xy;
+                    var item = o.item;
                     var icon = item.icon;
                     if (icon) {
                         ctx.fillStyle = 'white';
@@ -3522,14 +4145,21 @@ var GLCanvasCluster = function (_BaseCanvas) {
             }
         }
     }, {
-        key: 'getColor',
-        value: function getColor(count) {
-            var color = 'rgba(110, 204, 57, 0.9)';
+        key: 'getOutColor',
+        value: function getOutColor(count) {
+            var color = 'rgba(110, 204, 57, 0.6)';
             if (!count) return color;
-            if (count > 1000) color = 'rgba(255,178,72,0.9)';
-            if (count > 5000) color = 'rgba(235,129,70,0.9)';
-            if (count > 10000) color = 'rgba(217,88,80,0.9)';
-            if (count > 20000) color = 'rgba(137,52,72,0.9)';
+            if (count > 1000) color = 'rgba(241, 211, 87, 0.6)';
+            if (count > 5000) color = 'rgba(235,129,70,0.6)';
+            return color;
+        }
+    }, {
+        key: 'getInnerColor',
+        value: function getInnerColor(count) {
+            var color = 'rgba(110, 204, 57, 1)';
+            if (!count) return color;
+            if (count > 1000) color = 'rgba(241, 211, 87, 1)';
+            if (count > 5000) color = 'rgba(235,129,70,1)';
             return color;
         }
     }]);
@@ -3540,7 +4170,7 @@ var GLCanvasCluster = function (_BaseCanvas) {
 exports.default = GLCanvasCluster;
 
 /***/ }),
-/* 26 */
+/* 28 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3657,7 +4287,7 @@ var GLCanvasEffect = function (_BaseCanvas) {
 exports.default = GLCanvasEffect;
 
 /***/ }),
-/* 27 */
+/* 29 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3752,7 +4382,7 @@ var GLCanvasGrid = function (_BaseCanvas) {
 exports.default = GLCanvasGrid;
 
 /***/ }),
-/* 28 */
+/* 30 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3764,7 +4394,7 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-var _GLColorPalette = __webpack_require__(29);
+var _GLColorPalette = __webpack_require__(31);
 
 var _GLColorPalette2 = _interopRequireDefault(_GLColorPalette);
 
@@ -3776,7 +4406,7 @@ var _GLSimplePath = __webpack_require__(5);
 
 var _GLSimplePath2 = _interopRequireDefault(_GLSimplePath);
 
-var _GLCanvas = __webpack_require__(8);
+var _GLCanvas = __webpack_require__(9);
 
 var _GLCanvas2 = _interopRequireDefault(_GLCanvas);
 
@@ -3938,7 +4568,7 @@ var GLCanvasHeat = function (_BaseCanvas) {
 exports.default = GLCanvasHeat;
 
 /***/ }),
-/* 29 */
+/* 31 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -3953,7 +4583,7 @@ var _createClass = function () { function defineProperties(target, props) { for 
                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       */
 
 
-var _GLCanvas = __webpack_require__(8);
+var _GLCanvas = __webpack_require__(9);
 
 var _GLCanvas2 = _interopRequireDefault(_GLCanvas);
 
@@ -3999,7 +4629,7 @@ var GLColorPalette = function () {
 exports.default = new GLColorPalette();
 
 /***/ }),
-/* 30 */
+/* 32 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4150,7 +4780,7 @@ var GLCanvasHoneycomb = function (_BaseCanvas) {
 exports.default = GLCanvasHoneycomb;
 
 /***/ }),
-/* 31 */
+/* 33 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4222,7 +4852,7 @@ var GLCanvasIcon = function (_BaseCanvas) {
 exports.default = GLCanvasIcon;
 
 /***/ }),
-/* 32 */
+/* 34 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4238,7 +4868,7 @@ var _BaseCanvas2 = __webpack_require__(0);
 
 var _BaseCanvas3 = _interopRequireDefault(_BaseCanvas2);
 
-var _Migration = __webpack_require__(33);
+var _Migration = __webpack_require__(35);
 
 var _Migration2 = _interopRequireDefault(_Migration);
 
@@ -4335,7 +4965,7 @@ var GLCanvasMigrate = function (_BaseCanvas) {
 exports.default = GLCanvasMigrate;
 
 /***/ }),
-/* 33 */
+/* 35 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4363,7 +4993,7 @@ var _Pulse = __webpack_require__(7);
 
 var _Pulse2 = _interopRequireDefault(_Pulse);
 
-var _Spark = __webpack_require__(9);
+var _Spark = __webpack_require__(10);
 
 var _Spark2 = _interopRequireDefault(_Spark);
 
@@ -4514,7 +5144,7 @@ var Migration = function () {
 exports.default = Migration;
 
 /***/ }),
-/* 34 */
+/* 36 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4530,7 +5160,7 @@ var _BaseCanvas2 = __webpack_require__(0);
 
 var _BaseCanvas3 = _interopRequireDefault(_BaseCanvas2);
 
-var _MigrationLine = __webpack_require__(35);
+var _MigrationLine = __webpack_require__(37);
 
 var _MigrationLine2 = _interopRequireDefault(_MigrationLine);
 
@@ -4629,7 +5259,7 @@ var GLCanvasMigrateLines = function (_BaseCanvas) {
 exports.default = GLCanvasMigrateLines;
 
 /***/ }),
-/* 35 */
+/* 37 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4657,7 +5287,7 @@ var _Pulse = __webpack_require__(7);
 
 var _Pulse2 = _interopRequireDefault(_Pulse);
 
-var _Spark = __webpack_require__(9);
+var _Spark = __webpack_require__(10);
 
 var _Spark2 = _interopRequireDefault(_Spark);
 
@@ -4779,7 +5409,7 @@ var MigrationLine = function () {
 exports.default = MigrationLine;
 
 /***/ }),
-/* 36 */
+/* 38 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4884,7 +5514,7 @@ var GLCanvasScatter = function (_BaseCanvas) {
 exports.default = GLCanvasScatter;
 
 /***/ }),
-/* 37 */
+/* 39 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -4973,7 +5603,7 @@ var GLCanvasSimple = function (_BaseCanvas) {
 exports.default = GLCanvasSimple;
 
 /***/ }),
-/* 38 */
+/* 40 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5093,7 +5723,7 @@ var GLCanvasStar = function (_BaseCanvas) {
 exports.default = GLCanvasStar;
 
 /***/ }),
-/* 39 */
+/* 41 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5211,7 +5841,7 @@ var GLCanvasTagCloud = function (_BaseCanvas) {
 exports.default = GLCanvasTagCloud;
 
 /***/ }),
-/* 40 */
+/* 42 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5295,7 +5925,7 @@ var GLCanvasText = function (_BaseCanvas) {
 exports.default = GLCanvasText;
 
 /***/ }),
-/* 41 */
+/* 43 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5523,7 +6153,7 @@ var GLCanvasWaterBubble = function (_BaseCanvas) {
 exports.default = GLCanvasWaterBubble;
 
 /***/ }),
-/* 42 */
+/* 44 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5604,7 +6234,7 @@ var GLCanvasRadial = function (_BaseCanvas) {
 exports.default = GLCanvasRadial;
 
 /***/ }),
-/* 43 */
+/* 45 */
 /***/ (function(module, exports, __webpack_require__) {
 
 "use strict";
@@ -5648,188 +6278,10 @@ var Circle = function (_maptalks$Circle) {
 module.exports = Circle;
 
 /***/ }),
-/* 44 */
-/***/ (function(module, exports, __webpack_require__) {
-
-var SphericalMercator = (function(){
-
-// Closures including constants and other precalculated values.
-var cache = {},
-    EPSLN = 1.0e-10,
-    D2R = Math.PI / 180,
-    R2D = 180 / Math.PI,
-    // 900913 properties.
-    A = 6378137.0,
-    MAXEXTENT = 20037508.342789244;
-
-
-// SphericalMercator constructor: precaches calculations
-// for fast tile lookups.
-function SphericalMercator(options) {
-    options = options || {};
-    this.size = options.size || 256;
-    if (!cache[this.size]) {
-        var size = this.size;
-        var c = cache[this.size] = {};
-        c.Bc = [];
-        c.Cc = [];
-        c.zc = [];
-        c.Ac = [];
-        for (var d = 0; d < 30; d++) {
-            c.Bc.push(size / 360);
-            c.Cc.push(size / (2 * Math.PI));
-            c.zc.push(size / 2);
-            c.Ac.push(size);
-            size *= 2;
-        }
-    }
-    this.Bc = cache[this.size].Bc;
-    this.Cc = cache[this.size].Cc;
-    this.zc = cache[this.size].zc;
-    this.Ac = cache[this.size].Ac;
-};
-
-// Convert lon lat to screen pixel value
-//
-// - `ll` {Array} `[lon, lat]` array of geographic coordinates.
-// - `zoom` {Number} zoom level.
-SphericalMercator.prototype.px = function(ll, zoom) {
-    var d = this.zc[zoom];
-    var f = Math.min(Math.max(Math.sin(D2R * ll[1]), -0.9999), 0.9999);
-    var x = Math.round(d + ll[0] * this.Bc[zoom]);
-    var y = Math.round(d + 0.5 * Math.log((1 + f) / (1 - f)) * (-this.Cc[zoom]));
-    (x > this.Ac[zoom]) && (x = this.Ac[zoom]);
-    (y > this.Ac[zoom]) && (y = this.Ac[zoom]);
-    //(x < 0) && (x = 0);
-    //(y < 0) && (y = 0);
-    return [x, y];
-};
-
-// Convert screen pixel value to lon lat
-//
-// - `px` {Array} `[x, y]` array of geographic coordinates.
-// - `zoom` {Number} zoom level.
-SphericalMercator.prototype.ll = function(px, zoom) {
-    var g = (px[1] - this.zc[zoom]) / (-this.Cc[zoom]);
-    var lon = (px[0] - this.zc[zoom]) / this.Bc[zoom];
-    var lat = R2D * (2 * Math.atan(Math.exp(g)) - 0.5 * Math.PI);
-    return [lon, lat];
-};
-
-// Convert tile xyz value to bbox of the form `[w, s, e, n]`
-//
-// - `x` {Number} x (longitude) number.
-// - `y` {Number} y (latitude) number.
-// - `zoom` {Number} zoom.
-// - `tms_style` {Boolean} whether to compute using tms-style.
-// - `srs` {String} projection for resulting bbox (WGS84|900913).
-// - `return` {Array} bbox array of values in form `[w, s, e, n]`.
-SphericalMercator.prototype.bbox = function(x, y, zoom, tms_style, srs) {
-    // Convert xyz into bbox with srs WGS84
-    if (tms_style) {
-        y = (Math.pow(2, zoom) - 1) - y;
-    }
-    // Use +y to make sure it's a number to avoid inadvertent concatenation.
-    var ll = [x * this.size, (+y + 1) * this.size]; // lower left
-    // Use +x to make sure it's a number to avoid inadvertent concatenation.
-    var ur = [(+x + 1) * this.size, y * this.size]; // upper right
-    var bbox = this.ll(ll, zoom).concat(this.ll(ur, zoom));
-
-    // If web mercator requested reproject to 900913.
-    if (srs === '900913') {
-        return this.convert(bbox, '900913');
-    } else {
-        return bbox;
-    }
-};
-
-// Convert bbox to xyx bounds
-//
-// - `bbox` {Number} bbox in the form `[w, s, e, n]`.
-// - `zoom` {Number} zoom.
-// - `tms_style` {Boolean} whether to compute using tms-style.
-// - `srs` {String} projection of input bbox (WGS84|900913).
-// - `@return` {Object} XYZ bounds containing minX, maxX, minY, maxY properties.
-SphericalMercator.prototype.xyz = function(bbox, zoom, tms_style, srs) {
-    // If web mercator provided reproject to WGS84.
-    if (srs === '900913') {
-        bbox = this.convert(bbox, 'WGS84');
-    }
-
-    var ll = [bbox[0], bbox[1]]; // lower left
-    var ur = [bbox[2], bbox[3]]; // upper right
-    var px_ll = this.px(ll, zoom);
-    var px_ur = this.px(ur, zoom);
-    // Y = 0 for XYZ is the top hence minY uses px_ur[1].
-    var x = [ Math.floor(px_ll[0] / this.size), Math.floor((px_ur[0] - 1) / this.size) ];
-    var y = [ Math.floor(px_ur[1] / this.size), Math.floor((px_ll[1] - 1) / this.size) ];
-    var bounds = {
-        minX: Math.min.apply(Math, x) < 0 ? 0 : Math.min.apply(Math, x),
-        minY: Math.min.apply(Math, y) < 0 ? 0 : Math.min.apply(Math, y),
-        maxX: Math.max.apply(Math, x),
-        maxY: Math.max.apply(Math, y)
-    };
-    if (tms_style) {
-        var tms = {
-            minY: (Math.pow(2, zoom) - 1) - bounds.maxY,
-            maxY: (Math.pow(2, zoom) - 1) - bounds.minY
-        };
-        bounds.minY = tms.minY;
-        bounds.maxY = tms.maxY;
-    }
-    return bounds;
-};
-
-// Convert projection of given bbox.
-//
-// - `bbox` {Number} bbox in the form `[w, s, e, n]`.
-// - `to` {String} projection of output bbox (WGS84|900913). Input bbox
-//   assumed to be the "other" projection.
-// - `@return` {Object} bbox with reprojected coordinates.
-SphericalMercator.prototype.convert = function(bbox, to) {
-    if (to === '900913') {
-        return this.forward(bbox.slice(0, 2)).concat(this.forward(bbox.slice(2,4)));
-    } else {
-        return this.inverse(bbox.slice(0, 2)).concat(this.inverse(bbox.slice(2,4)));
-    }
-};
-
-// Convert lon/lat values to 900913 x/y.
-SphericalMercator.prototype.forward = function(ll) {
-    var xy = [
-        A * ll[0] * D2R,
-        A * Math.log(Math.tan((Math.PI*0.25) + (0.5 * ll[1] * D2R)))
-    ];
-    // if xy value is beyond maxextent (e.g. poles), return maxextent.
-    (xy[0] > MAXEXTENT) && (xy[0] = MAXEXTENT);
-    (xy[0] < -MAXEXTENT) && (xy[0] = -MAXEXTENT);
-    (xy[1] > MAXEXTENT) && (xy[1] = MAXEXTENT);
-    (xy[1] < -MAXEXTENT) && (xy[1] = -MAXEXTENT);
-    return xy;
-};
-
-// Convert 900913 x/y values to lon/lat.
-SphericalMercator.prototype.inverse = function(xy) {
-    return [
-        (xy[0] * R2D / A),
-        ((Math.PI*0.5) - 2.0 * Math.atan(Math.exp(-xy[1] / A))) * R2D
-    ];
-};
-
-return SphericalMercator;
-
-})();
-
-if (true) {
-    module.exports = exports = SphericalMercator;
-}
-
-
-/***/ }),
-/* 45 */
+/* 46 */
 /***/ (function(module, exports) {
 
-module.exports = {"id":"maptalks-gmvi","version":"0.1.0","date":"2018.4.28","skin":"default"}
+module.exports = {"id":"maptalks-gmvi","version":"0.1.0","date":"2018.4.30","skin":"default"}
 
 /***/ })
 /******/ ]);

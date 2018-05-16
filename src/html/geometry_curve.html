@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>图形 - 圆弧和贝塞尔曲线</title>
+  <style type="text/css">
+    html,body{margin:0px;height:100%;width:100%}
+    .container{width:100%;height:100%}
+  </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maptalks@0.39.8/dist/maptalks.css">
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/maptalks@0.39.8/dist/maptalks.min.js"></script>
+  <body>
+
+    <div id="map" class="container"></div>
+
+    <script>
+     var map = new maptalks.Map('map', {
+  center: [120,31],
+  zoom: 14,
+  baseLayer: new maptalks.TileLayer('base', {
+    urlTemplate: 'http://www.google.cn/maps/vt?pb=!1m5!1m4!1i{z}!2i{x}!3i{y}!4i256!2m3!1e0!2sm!3i342009817!3m9!2sen-US!3sCN!5e18!12m1!1e47!12m3!1e37!2m1!1ssmartmaps!4e0&token=32965',
+    subdomains: ['a','b','c','d'],
+    attribution: '&copy; Google Maps'
+  })
+});
+
+var c = new maptalks.Coordinate(-0.11305,51.4985);
+
+var arc = new maptalks.ArcCurve([[120,31],[120,31.1],[120,31.2]], {
+  'symbol' : getSymbol('Arc')
+});
+
+
+
+new maptalks.VectorLayer('vector', [arc]).addTo(map);
+
+arc.on('click',function(e){
+
+  alert();
+})
+
+function getSymbol(title) {
+  return [
+    {
+      lineColor: '#34495e',
+      lineWidth: 8
+    },
+    {
+      markerType : 'ellipse',
+      markerWidth : 8,
+      markerHeight : 8,
+      markerFill : '#f00',
+      markerPlacement : 'vertex'
+    },
+    {
+      textName : title,
+      textFill : '#f00',
+      textWeight : 'bold',
+      textHaloColor : '#fff',
+      textHaloRadius : 3,
+      textSize : 20,
+      textWrapCharacter : '\n'
+    }
+  ];
+}
+
+    </script>
+  </body>
+</html>

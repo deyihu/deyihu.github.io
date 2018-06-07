@@ -5,7 +5,7 @@ function addText(){
     let scene=me.getScene();
      //text
     var fontLoader = new THREE.FontLoader();
-    fontLoader.load( 'helvetiker_regular.typeface.json', function ( font ) {
+    fontLoader.load( 'data/helvetiker_regular.typeface.json', function ( font ) {
         let textGeo = new THREE.TextGeometry( 'Iverson', {
 					font:font,
 					size: 50,

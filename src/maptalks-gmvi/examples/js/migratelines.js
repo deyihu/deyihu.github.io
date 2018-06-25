@@ -135,7 +135,6 @@ function  canvasTest() {
             color:randomColor(),
         })
     }
-
     var devicePixelRatio=this.devicePixelRatio=maptalks.Browser.retina ? 2 : 1;
     var dataSet = new maptalks.GMVI.DataSet(data);
     var options = {

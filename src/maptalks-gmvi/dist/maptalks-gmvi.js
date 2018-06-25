@@ -3113,6 +3113,11 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
             return this;
         }
     }, {
+        key: "identify",
+        value: function identify(e, callback) {
+            return this._clickEvent(e, callback);
+        }
+    }, {
         key: "getCanvas",
         value: function getCanvas() {
             return this._canvas;
@@ -3496,9 +3501,10 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
             var map = this.getMap();
             var coordinates = e.coordinate;
             var pixel = map.coordinateToContainerPoint(coordinates);
-            // console.log(pixel)
-            if (this.options.draw == GL.GMVI.Cluster && this.status == GL.GMVI.Cluster) {
-                return this;
+            pixel.x = Math.ceil(pixel.x);
+            pixel.y = Math.ceil(pixel.y);
+            if (this.options.draw == GL.GMVI.Cluster && this.stauts == GL.GMVI.Cluster) {
+                return;
             }
             var canvas = document.createElement('canvas');
             canvas.width = this._canvas.width;
@@ -3523,14 +3529,17 @@ var GMVICanvasLayer = function (_maptalks$Layer) {
                     ctx.beginPath();
                     _GLSimplePath2.default.draw(ctx, data[i], this.options);
                     ctx.restore();
-                    if (ctx.isPointInPath(pixel.x, pixel.y)) {
+                    if (ctx.isPointInPath(pixel.x, pixel.y) || ctx.isPointInStroke(pixel.x, pixel.y)) {
                         data[i].location = e;
-                        callback(data[i], e);
-                        return this;
+                        if (callback) {
+                            callback(data[i], e);
+                            return;
+                        } else {
+                            return data[i];
+                        }
                     }
                 }
             }
-            return this;
         }
     }, {
         key: "_initEvent",
@@ -6338,7 +6347,7 @@ module.exports = Circle;
 /* 46 */
 /***/ (function(module, exports) {
 
-module.exports = {"id":"maptalks-gmvi","version":"0.1.0","date":"2018.5.23","skin":"default"}
+module.exports = {"id":"maptalks-gmvi","version":"0.1.0","date":"2018.6.25","skin":"default"}
 
 /***/ })
 /******/ ]);

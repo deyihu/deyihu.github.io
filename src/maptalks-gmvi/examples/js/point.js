@@ -16,15 +16,11 @@ function init() {
             subdomains: ['a','b','c','d']
         })
     });
-    map.on('click',function(e){
-        console.log(e)
-    })
-    
-     canvasTest();
  
+    canvasTest();
  }
  
- 
+
  
  //热区测试
  function  canvasTest() {
@@ -51,35 +47,19 @@ function init() {
          shadowColor: 'rgba(255, 50, 50, 1)',
          shadowBlur: 10,
          globalCompositeOperation: 'lighter',
-        //  animation: {
-        //      type: 'time',
-        //      stepsRange: {
-        //          start: 0,
-        //          end: 100
-        //      },
-        //      steps: 100,
-        //      trails: 10,
-        //      duration: 5,
-        //  },
          size: 5,
          draw: 'simple',
      }
      var canvasLayer=new maptalks.GMVI.CanvasLayer('111',dataSet,options);
      canvasLayer.addTo(map)
-     canvasLayer.on('click',function(e){
-        console.log(e)
-        console.log(e.name)
-        var coordinate=e.location.coordinate;
-        // popup.setTitle('info')
-        // popup.setContent(e.location.coordinate.toString())
-        // popup.addTo(map).show(coordinate);
+     map.on('click',function(e){
+        let d=canvasLayer.identify(e);
+        if(d){
+           console.log(d)
+        }
+     })
 
-    })
-
- 
-     // this.map.removeLayer(heatLayer)
  
  }
  
 init();
- 

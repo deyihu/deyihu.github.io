@@ -18,7 +18,7 @@ function init() {
         })
     });
     map.on('click',function(e){
-        console.log(e)
+        // console.log(e)
     })
 
     
@@ -30,7 +30,7 @@ function  canvasTest() {
     var data = [];
     var poiList=gsAreaPoi.data;
     var len=poiList.length;
-    console.log(len)
+    console.log('pois.length',len)
     for( var i=0;i<100;i++){
         var poiInfo=poiList[i];
         var lng=poiInfo.lng;
@@ -41,7 +41,8 @@ function  canvasTest() {
                 coordinates: [lng,lat]
             },
             count: Math.random() * 10,
-            time: Math.random() * 100
+            time: Math.random() * 100,
+            // color:'red'
         });
 
     }
@@ -78,21 +79,18 @@ function  canvasTest() {
             }
         ],
 
-        size: 35,
-        draw: 'effect'
+        size: 25,
+        draw: 'effect',
+        offset:2
     }
     layer= new maptalks.GMVI.CanvasLayer('lasjflasjf',dataSet,options);//.addTo(this.map);
     map.addLayer(layer)
-    layer.on('click',function(e){
-        console.log(e)
-        console.log(e.name)
-        var coordinate=e.location.coordinate;
-        // popup.setTitle('info')
-        // popup.setContent(e.location.coordinate.toString())
-        // popup.addTo(map).show(coordinate);
-
-    })
-    
+    map.on('click',function(e){
+        let d=layer.identify(e);
+        if(d){
+           console.log(d)
+        }
+     })
     
 }
 init();

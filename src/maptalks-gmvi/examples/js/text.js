@@ -5,7 +5,7 @@ function init() {
     map = new maptalks.Map("map-container",{
         // center : [175.46873, -37.90258],
         center : [31.30150538026905,120.61955565318601].reverse(),
-        zoom   :  12,
+        zoom   :  10,
         pitch:30,
         maxPitch:60,
         // maxExtent : new maptalks.Extent(119.89,30.75,121.406,32.08),
@@ -17,9 +17,6 @@ function init() {
             subdomains: ['a','b','c','d']
         })
     });
-    map.on('click',function(e){
-        console.log(e)
-    })
     canvasTest();
 }
 
@@ -30,7 +27,7 @@ function  canvasTest() {
     var len=poiList.length;
     console.log(len)
     var overlays=[];
-    for( var i=0;i<100;i++) {
+    for( var i=0;i<1000;i++) {
         var poiInfo = poiList[i];
         data.push({
             geometry: {
@@ -56,15 +53,12 @@ function  canvasTest() {
     }
    var layer= new maptalks.GMVI.CanvasLayer('aljflajflas',dataSet,options)
    map.addLayer(layer);
-   layer.on('click',function(e){
-    console.log(e)
-        console.log(e.name)
-        var coordinate=e.location.coordinate;
-    // popup.setTitle('info')
-    // popup.setContent(e.location.coordinate.toString())
-    // popup.addTo(map).show(coordinate);
-
-    })
+   map.on('click',function(e){
+    let d=layer.identify(e);
+    if(d){
+       console.log(d)
+    }
+ })
 
 
 }

@@ -46,21 +46,17 @@ function  canvasTest() {
     var options = {
         fillStyle: 'rgba(55, 50, 250, 0.6)',
         globalCompositeOperation: "lighter",
-        size: 15,
+        size: 8,
         draw: 'simple'
     }
     var canvasLayer = new maptalks.GMVI.CanvasLayer('jasldfjlasf',dataSet,options);//.addTo(this.map);
      map.addLayer(canvasLayer)
-     canvasLayer.on('click',function(e){
-        console.log(e)
-        console.log(e.name)
-        var coordinate=e.location.coordinate;
-        // popup.setTitle('info')
-        // popup.setContent(e.location.coordinate.toString())
-        // popup.addTo(map).show(coordinate);
-
-    })
-
+     map.on('click',function(e){
+        let d=canvasLayer.identify(e);
+        if(d){
+           console.log(d)
+        }
+     })
 }
 
 init();

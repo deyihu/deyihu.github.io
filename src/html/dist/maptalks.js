@@ -6016,6 +6016,7 @@
         var map = this.getMap();
         this.southWest = map._containerPointToPoint(new Point(0, map.height));
         context.save();
+        context.beginPath();
 
         if (Browser$1.retina) {
           context.save();
@@ -6024,7 +6025,7 @@
 
         if (mask.getGeometries) {
           context.isMultiClip = true;
-          var masks = mask.getGeometries();
+          var masks = mask.getGeometries() || [];
           masks.forEach(function (_mask) {
             var painter = _mask._getPainter();
 

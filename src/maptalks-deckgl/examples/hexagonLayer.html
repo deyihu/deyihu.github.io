@@ -88,11 +88,7 @@
                         lightsStrength: [0.8, 0.0, 0.8, 0.0],
                         numberOfLights: 2
                     };
-                    const options = {
-                        radius: 1000,
-                        coverage: 1,
-                        upperPercentile: 100
-                    }
+      
 
                     const hexagonLayer = {
                         layerType: "HexagonLayer",
@@ -107,7 +103,9 @@
                         onHover: info => { console.log(info) },
                         lightSettings: LIGHT_SETTINGS,
                         opacity: 1,
-                        ...options
+                        radius: 1000,
+                        coverage: 1,
+                        upperPercentile: 100
                     };
                     deckglLayer.setProps({
                         layers: [hexagonLayer]

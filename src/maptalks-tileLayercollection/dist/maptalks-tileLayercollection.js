@@ -210,7 +210,7 @@ var params = {
             url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
         },
         Light: {
-            url: 'https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png'
+            url: 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
         }
     },
     Mapbox: {
@@ -221,7 +221,7 @@ var params = {
             url: 'http://a.tiles.mapbox.com/v4/mapbox.dark/{z}/{x}/{y}.png?access_token=' + mapboxKey
         },
         LightDark: {
-            url: 'http://a.tiles.mapbox.com/v3/spatialdev.map-c9z2cyef/{z}/{x}/{y}.png'
+            url: 'http://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'
         },
         Satellite: {
             url: 'http://a.tiles.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}.png?access_token=' + mapboxKey

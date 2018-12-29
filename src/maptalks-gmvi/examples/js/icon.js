@@ -23,7 +23,7 @@ function init() {
         'content' : '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         },
         baseLayer : new maptalks.TileLayer('tile',{
-            urlTemplate: '//a.tiles.mapbox.com/v3/spatialdev.map-c9z2cyef/{z}/{x}/{y}.png',
+            urlTemplate: '//a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
             subdomains: ['a','b','c','d']
         })
     });
@@ -103,33 +103,5 @@ function  canvasTest(img) {
     dataSet2= new maptalks.GMVI.DataSet(data2);
 }
 
-function offEvent() {
-    layer.off('click');
-}
-function removeEvent() {
-    map.removeLayer(layer)
-    return true;
-}
-
-function resetDatas() {
-    layer.resetDatas(new maptalks.GMVI.DataSet(data2))
-}
-
-function addDatas() {
-    layer.addDatas(new maptalks.GMVI.DataSet(data2))
-}
-
-
-function removeData() {
-    layer.removeData(data1[0])
-}
-
-function removeDatas() {
-    layer.removeDatas(data1)
-}
-
-// function setZindex() {
-//     layer.setZindex(2000)
-// }
 
 init();

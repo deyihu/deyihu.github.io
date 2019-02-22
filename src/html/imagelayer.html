@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Map - Display a map</title>
+<style type="text/css">
+    html,
+    body {
+        margin: 0px;
+        height: 100%;
+        width: 100%
+    }
+
+    .container {
+        width: 100%;
+        height: 100%
+    }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maptalks/dist/maptalks.css">
+<script type="text/javascript" src="dist/maptalks.js"></script>
+
+<body>
+
+    <div id="map" class="container"></div>
+
+    <script>
+        var map = new maptalks.Map('map', {
+            center: [-0.113049, 51.498568],
+            zoom: 14,
+            baseLayer: new maptalks.TileLayer('base', {
+                urlTemplate: 'http://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                subdomains: ['a', 'b', 'c', 'd'],
+                attribution: '&copy; <a href="http://osm.org">OpenStreetMap</a> contributors, &copy; <a href="https://carto.com/">CARTO</a>'
+            })
+        });
+
+        var center = map.getCenter();
+
+        var layer = new maptalks.VectorLayer('vector').addTo(map);
+
+        const images = [
+            {
+                url: 'https://avatars3.githubusercontent.com/u/3997050?s=40&v=4',
+                extent: map.getExtent(),
+                opacity: 1,
+                crossOrigin: 'true'
+            },
+            {
+                url: '1.png',
+                extent: map.getExtent(),
+                opacity: 1,
+                crossOrigin: 'true'
+            }
+        ];
+
+        var imageLayer = new maptalks.ImageLayer('images',
+            [
+              images[0]
+            ], {
+                crossOrigin: 'true'
+            })
+        // console.log(map.getExtent())
+        map.addLayer(imageLayer);
+        map.on('zoomend', function (e) {
+            // var images = imageLayer.getImages();
+         
+            // if(first){
+            //     image = maptalks.Util.extend({}, images[0], { extent: map.getExtent() });
+            // }else{
+            //     image = maptalks.Util.extend({}, images[1], { extent: map.getExtent() });
+            // }
+            const image = maptalks.Util.extend({}, images[0], { extent: map.getExtent() });
+            // const image = maptalks.Util.extend({}, images[0], { extent: map.getExtent() });
+            // delete image.glBuffer;
+            // console.log(image);
+            // image.extent = map.getExtent()
+            imageLayer.setImages([image])
+
+        })
+        map.on('moving moveend', function (e) {
+            // var images = imageLayer.getImages()
+            // images[0].extent = map.getExtent()
+            // imageLayer.setImages(images)
+            // console.log(imageLayer)
+        })
+        map.on('pitch', function (e) {
+            // var images = imageLayer.getImages()
+            // images[0].extent = map.getExtent()
+            // imageLayer.setImages(images)
+            // console.log(imageLayer)
+            //map1.setPitch(e.target.getPitch())
+        })
+
+        map.on('rotate', function (e) {
+            // var images = imageLayer.getImages()
+            // images[0].extent = map.getExtent()
+            // imageLayer.setImages(images)
+            // console.log(imageLayer)
+            // map1.setBearing(e.target.getBearing())
+        })
+
+    </script>
+</body>
+
+</html>

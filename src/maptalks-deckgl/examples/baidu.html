@@ -51,8 +51,8 @@
         var map = new maptalks.Map('map', {
             center: [120.5032982591415, 31.4251823229134],
             zoom: 13,
-            minZoom: 1,
-            maxZoom: 19,
+            minZoom: 5,
+            maxZoom: 18,
             spatialReference: {
                 projection: 'baidu'
             },
@@ -64,7 +64,7 @@
         });
 
         const deckglLayer = new maptalks.DeckGLLayer('kkkk', {
-            zoomOffset: 1.75
+            // zoomOffset: 1.75
         });
         map.addLayer(deckglLayer);
 

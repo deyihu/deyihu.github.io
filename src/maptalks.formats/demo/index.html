@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>formats demo</title>
+    <script src="https://unpkg.com/maptalks/dist/maptalks.min.js"></script>
+    <script src="../dist/maptalks.formats.js"></script>
+    <link type="text/css" rel="stylesheet" href="https://unpkg.com/maptalks/dist/maptalks.css">
+    <style type="text/css">
+        html,body{
+            margin:0px;
+            height:100%;
+            width: 100%;
+         }
+    </style>
+</head>
+<body scroll="no">
+<div style="width:100%;height:60%;" id="map"></div>
+<textarea style="width:100%;height:40%;" id="console"></textarea>
+<script type="text/javascript" >
+    var map = new maptalks.Map("map",{
+        center:     [0, 0],
+        zoom:  4,
+        attributionControl : {
+        'content' : '&copy; <a href="http://www.osm.org" target="_blank">OpenStreetMap</a> contributors'
+        },
+        baseLayer : new maptalks.TileLayer("base",{
+            'urlTemplate' : 'https://{s}.tile.thunderforest.com/transport/{z}/{x}/{y}.png',
+            'subdomains'  : ['a','b','c'],
+        })
+    });
+
+    new maptalks.control.Toolbar({
+      'vertical' : false,
+      'position' : 'top-left',
+      'items'     : [
+        {
+            item: 'CSV',
+            click : function () {
+                maptalks.Formats.csv('../test/a.csv', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('csv');
+                    var layer = new maptalks.VectorLayer('csv', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'GeoJSON',
+            click : function () {
+                maptalks.Formats.geojson('../test/a.geojson', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('geojson');
+                    var layer = new maptalks.VectorLayer('geojson', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'GPX',
+            click : function () {
+                maptalks.Formats.gpx('../test/a.gpx', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('gpx');
+                    var layer = new maptalks.VectorLayer('gpx', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'KML',
+            click : function () {
+                maptalks.Formats.kml('../test/a.kml', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('kml');
+                    var layer = new maptalks.VectorLayer('kml', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'Polyline',
+            click : function () {
+                maptalks.Formats.polyline('../test/a.polyline', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('polyline');
+                    var layer = new maptalks.VectorLayer('polyline', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'TopoJSON',
+            click : function () {
+                maptalks.Formats.topojson('../test/a.topojson', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('topojson');
+                    var layer = new maptalks.VectorLayer('topojson', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'WKT',
+            click : function () {
+                maptalks.Formats.wkt('../test/a.wkt', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('wkt');
+                    var layer = new maptalks.VectorLayer('wkt', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        },
+        {
+            item: 'osm',
+            click : function () {
+                maptalks.Formats.osm('../test/osm.osm', function (err, geojson) {
+                    if (err) {
+                        throw err;
+                    }
+                    map.removeLayer('osm');
+                    var layer = new maptalks.VectorLayer('osm', geojson).addTo(map);
+                    map.fitExtent(layer.getExtent());
+                });
+            }
+        }
+    ]
+    }).addTo(map);
+
+
+    function info(info) {
+        document.getElementById('console').value = '<pre>' + info + '</pre>';
+    }
+</script>
+</body>
+</html>

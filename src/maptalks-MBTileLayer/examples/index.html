@@ -1,36 +1,46 @@
 <!DOCTYPE html>
 <html>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>maptalks  Loads .mbtiles tilesets.</title>
-  <style type="text/css">
-    html,body{margin:0px;height:100%;width:100%}
-    .container{width:100%;height:100%}
-  </style>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maptalks@0.39.0/dist/maptalks.css">
-  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/maptalks@0.39.0/dist/maptalks.min.js"></script>
-  <script src="https://unpkg.com/sql.js@0.3.2/js/sql.js"></script>
-  <script src="../dist/maptalks-MBTileLayer.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>maptalks Loads .mbtiles tilesets.</title>
+<style type="text/css">
+  html,
+  body {
+    margin: 0px;
+    height: 100%;
+    width: 100%
+  }
 
-  <body>
-    <div id="map" class="container"></div>
+  .container {
+    width: 100%;
+    height: 100%
+  }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maptalks@0.39.0/dist/maptalks.css">
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/maptalks@0.39.0/dist/maptalks.min.js"></script>
+<script src="https://unpkg.com/sql.js@0.3.2/js/sql.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/maptalks-mbtilelayer@0.0.1/dist/maptalks-mbtilelayer.min.js"></script>
 
-    <script>
-      var baseLayer = new maptalks.MBTileLayer('base',{
-        // urlTemplate: './countries-raster.mbtiles',
-        dbUrl:'./countries-raster.mbtiles',
-        attribution: '&copy; MapBox Maps'
-      });
+<body>
+  <div id="map" class="container"></div>
 
-    
-      var map = new maptalks.Map('map', {
-        center:     [0,0],
-        zoom:  0,
-        baseLayer : baseLayer
-      });
+  <script>
+    var baseLayer = new maptalks.MBTileLayer('base', {
+      // urlTemplate: './countries-raster.mbtiles',
+      dbUrl: './countries-raster.mbtiles',
+      attribution: '&copy; MapBox Maps'
+    });
 
 
+    var map = new maptalks.Map('map', {
+      center: [0, 0],
+      zoom: 0,
+      baseLayer: baseLayer
+    });
 
-    </script>
-  </body>
+
+
+  </script>
+</body>
+
 </html>
